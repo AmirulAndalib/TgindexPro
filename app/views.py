@@ -32,13 +32,11 @@ class Views:
         if len(chat_ids) == 1:
             raise web.HTTPFound(f"{chat_ids[0]['alias_id']}")
 
-        chats = []
-        for chat in chat_ids:
-            chats.append({
+        chats = [{
                 'page_id': chat['alias_id'],
                 'name': chat['title'],
                 'url': req.rel_url.path + f"/{chat['alias_id']}"
-            })
+            } for chat in chat_ids]
         return {'chats':chats, 'otg': enable_otg}
 
 
@@ -47,18 +45,16 @@ class Views:
         if not enable_otg:
             raise web.HTTPFound('/')
         return_data = {}
-        error = req.query.get('e')
-        if error:
-            return_data.update({'error': error})
+        if error := req.query.get('e'):
+            return_data['error'] = error
 
         return return_data
 
     @aiohttp_jinja2.template('playlistCreator.html')
     async def playlist_creator(self, req):
         return_data = {}
-        error = req.query.get('e')
-        if error:
-            return_data.update({'error': error})
+        if error := req.query.get('e'):
+            return_data['error'] = error
         return return_data
 
 
@@ -97,8 +93,11 @@ class Views:
     @aiohttp_jinja2.template('index.html')
     async def index(self, req):
         alias_id = req.match_info['chat']
-        chat = [i for i in chat_ids if i['alias_id'] == alias_id]
-        if not chat:
+        if chat := [i for i in chat_ids if i['alias_id'] == alias_id]:
+            chat = chat[0]
+            chat_id = chat['chat_id']
+            chat_name = chat['title']
+        else:
             if not enable_otg:
                 raise web.HTTPFound('/')
 
@@ -108,10 +107,6 @@ class Views:
                 chat_name = chat_.title
             except:
                 raise web.HTTPFound('/')
-        else:
-            chat = chat[0]
-            chat_id = chat['chat_id']
-            chat_name = chat['title']
         log_msg = ''
         try:
             offset_val = int(req.query.get('page', '1'))
@@ -131,7 +126,7 @@ class Views:
                 'add_offset': 20*offset_val
             }
             if search_query:
-                kwargs.update({'search': search_query})
+                kwargs['search'] = search_query
             messages = (await self.client.get_messages(**kwargs)) or []
 
         except:
@@ -176,7 +171,7 @@ class Views:
         if offset_val:
             query = {'page':offset_val}
             if search_query:
-                query.update({'search':search_query})
+                query['search'] = search_query
             prev_page =  {
                 'url': str(req.rel_url.with_query(query)),
                 'no': offset_val
@@ -185,7 +180,7 @@ class Views:
         if len(messages)==20:
             query = {'page':offset_val+2}
             if search_query:
-                query.update({'search':search_query})
+                query['search'] = search_query
             next_page =  {
                 'url': str(req.rel_url.with_query(query)),
                 'no': offset_val+2
@@ -210,17 +205,16 @@ class Views:
           alias_id = req.match_info['chat']
         except:
           alias_id = chat_ids[0]['alias_id']
-        chat = [i for i in chat_ids if i['alias_id'] == alias_id]
-        if not chat:
+        if chat := [i for i in chat_ids if i['alias_id'] == alias_id]:
+            chat = chat[0]
+            chat_id = chat['chat_id']
+        else:
             if not enable_otg:
                 raise web.HTTPFound('/')
             try:
                 chat_id = int(alias_id)
             except:
                 raise web.HTTPFound('/')
-        else:
-            chat = chat[0]
-            chat_id = chat['chat_id']
         try:
             message = await self.client.get_messages(entity=chat_id, ids=file_id)
         except:
@@ -234,14 +228,17 @@ class Views:
             }
         return_val = {}
         reply_btns = []
-        if message.reply_markup:
-            if isinstance(message.reply_markup, types.ReplyInlineMarkup):
-                for button_row in message.reply_markup.rows:
-                    btns = []
-                    for button in button_row.buttons:
-                        if isinstance(button, types.KeyboardButtonUrl):
-                            btns.append({'url': button.url, 'text': button.text})
-                    reply_btns.append(btns)
+        if message.reply_markup and isinstance(
+            message.reply_markup, types.ReplyInlineMarkup
+        ):
+            for button_row in message.reply_markup.rows:
+                btns = [
+                    {'url': button.url, 'text': button.text}
+                    for button in button_row.buttons
+                    if isinstance(button, types.KeyboardButtonUrl)
+                ]
+
+                reply_btns.append(btns)
         if message.file and not isinstance(message.media, types.MessageMediaWebPage):
             file_name = get_file_name(message)
             file_size = message.file.size
@@ -250,18 +247,13 @@ class Views:
                 'type':message.file.mime_type
             }
             if 'video/' in message.file.mime_type:
-                media.update({
-                    'video' : True
-                })
+                media['video'] = True
             elif 'audio/' in message.file.mime_type:
                 media['audio'] = True
             elif 'image/' in message.file.mime_type:
                 media['image'] = True
 
-            if message.text:
-                caption = message.raw_text
-            else:
-                caption = ''
+            caption = message.raw_text if message.text else ''
             caption_html = Markup.escape(caption).__str__().replace('\n', '<br>')
             return_val = {
                 'found': True,
@@ -300,18 +292,16 @@ class Views:
 
     async def logo(self, req):
         alias_id = req.match_info['chat']
-        chat = [i for i in chat_ids if i['alias_id'] == alias_id]
-        if not chat:
+        if chat := [i for i in chat_ids if i['alias_id'] == alias_id]:
+            chat = chat[0]
+            chat_id = chat['chat_id']
+        else:
             if not enable_otg:
                 return web.Response(status=403, text="403: Forbiden")
             try:
                 chat_id = int(alias_id)
             except:
                 return web.Response(status=403, text="403: Forbiden")
-        else:
-            chat = chat[0]
-            chat_id = chat['chat_id']
-        chat_name = "Image not available"
         try:
             photo = await self.client.get_profile_photos(chat_id)
         except:
@@ -320,9 +310,10 @@ class Views:
         if not photo:
             W, H = (160, 160)
             c = lambda : random.randint(0, 255)
-            color = tuple([c() for i in range(3)])
+            color = tuple(c() for i in range(3))
             im = Image.new("RGB", (W,H), color)
             draw = ImageDraw.Draw(im)
+            chat_name = "Image not available"
             w, h = draw.textsize(chat_name)
             draw.text(((W-w)/2,(H-h)/2), chat_name, fill="white")
             temp = io.BytesIO()
@@ -330,7 +321,7 @@ class Views:
             body = temp.getvalue()
         else:
             photo = photo[0]
-            pos = -1 if req.query.get('big', None) else int(len(photo.sizes)/2)
+            pos = -1 if req.query.get('big', None) else len(photo.sizes) // 2
             size = self.client._get_thumb(photo.sizes, pos)
             if isinstance(size, (types.PhotoCachedSize, types.PhotoStrippedSize)):
                 body = self.client._download_cached_photo_size(size, bytes)
@@ -343,7 +334,8 @@ class Views:
                 )
                 body = self.client.iter_download(media)
 
-        r = web.Response(
+        #r.enable_chunked_encoding()
+        return web.Response(
             status=200,
             body=body,
             headers={
@@ -351,8 +343,6 @@ class Views:
                 "Content-Disposition": 'inline; filename="logo.jpg"'
             }
         )
-        #r.enable_chunked_encoding()
-        return r
 
 
     async def download_get(self, req):
@@ -366,17 +356,16 @@ class Views:
     async def thumbnail_get(self, req):
         file_id = int(req.match_info["id"])
         alias_id = req.match_info['chat']
-        chat = [i for i in chat_ids if i['alias_id'] == alias_id]
-        if not chat:
+        if chat := [i for i in chat_ids if i['alias_id'] == alias_id]:
+            chat = chat[0]
+            chat_id = chat['chat_id']
+        else:
             if not enable_otg:
                 return web.Response(status=403, text="403: Forbiden")
             try:
                 chat_id = int(alias_id)
             except:
                 return web.Response(status=403, text="403: Forbiden")
-        else:
-            chat = chat[0]
-            chat_id = chat['chat_id']
         try:
             message = await self.client.get_messages(entity=chat_id, ids=file_id)
         except:
@@ -398,13 +387,13 @@ class Views:
 
         if not thumbnails:
             c = lambda : random.randint(0, 255)
-            color = tuple([c() for i in range(3)])
+            color = tuple(c() for i in range(3))
             im = Image.new("RGB", (160, 90), color)
             temp = io.BytesIO()
             im.save(temp, "PNG")
             body = temp.getvalue()
         else:
-            thumb_pos = int(len(thumbnails)/2)
+            thumb_pos = len(thumbnails) // 2
             thumbnail = self.client._get_thumb(thumbnails, thumb_pos)
             if not thumbnail or isinstance(thumbnail, types.PhotoSizeEmpty):
                 return web.Response(status=410, text="410: Gone. Access to the target resource is no longer available!")
@@ -421,7 +410,8 @@ class Views:
 
                 body = self.client.iter_download(actual_file)
 
-        r = web.Response(
+        #r.enable_chunked_encoding()
+        return web.Response(
             status=200,
             body=body,
             headers={
@@ -429,8 +419,6 @@ class Views:
                 "Content-Disposition": 'inline; filename="thumbnail.jpg"'
             }
         )
-        #r.enable_chunked_encoding()
-        return r
 
 
     async def handle_request(self, req, head=False):
@@ -439,19 +427,17 @@ class Views:
           alias_id = req.match_info['chat']
         except:
           alias_id = chat_ids[0]['alias_id']
-        # print(chat_ids)
-        chat = [i for i in chat_ids if i['alias_id'] == alias_id]
-        if not chat:
+        if chat := [i for i in chat_ids if i['alias_id'] == alias_id]:
+            chat = chat[0]
+            chat_id = chat['chat_id']
+
+        else:
             if not enable_otg:
                 return web.Response(status=403, text="403: Forbiden")
             try:
                 chat_id = int(alias_id)
             except:
                 return web.Response(status=403, text="403: Forbiden")
-        else:
-            chat = chat[0]
-            chat_id = chat['chat_id']
-
         try:
             message = await self.client.get_messages(entity=chat_id, ids=file_id)
         except:
@@ -470,14 +456,13 @@ class Views:
 
         try:
             request = req
-            range_header = request.headers.get('Range', 0)
-            if range_header:
-              range_data = range_header.replace('bytes=', '').split('-')
-              from_bytes = int(range_data[0])
-              until_bytes = int(range_data[1]) if range_data[1] else file_size - 1
+            if range_header := request.headers.get('Range', 0):
+                range_data = range_header.replace('bytes=', '').split('-')
+                from_bytes = int(range_data[0])
+                until_bytes = int(range_data[1]) if range_data[1] else file_size - 1
             else:
-              from_bytes = request.http_range.start or 0
-              until_bytes = request.http_range.stop or file_size - 1
+                from_bytes = request.http_range.start or 0
+                until_bytes = request.http_range.stop or file_size - 1
 
             req_length = until_bytes - from_bytes
 
@@ -485,7 +470,7 @@ class Views:
             # offset = req.http_range.start or 0
             # limit = req.http_range.stop or size
             offset = from_bytes or 0
-            limit = until_bytes or size            
+            limit = until_bytes or size
             if (limit > size) or (offset < 0) or (limit < offset):
                 raise ValueError("range not in acceptable format")
         except ValueError:
@@ -519,10 +504,10 @@ class Views:
         #     body=body,
         #     headers=headers
         # )
-        
+
         # r.enable_chunked_encoding()
         # return r
-        
+
         return_resp = web.Response(
         status=206 if req.http_range.start else 200,
         body=body,

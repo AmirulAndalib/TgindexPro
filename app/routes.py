@@ -64,16 +64,17 @@ async def setup_routes(app, handler):
             if chat.id in exclude_chats:
                 continue
 
-            if chat.is_user:
-                if index_private:
-                    alias_id = generate_alias_id(chat)
-            elif chat.is_channel:
-                if index_channel:
-                    alias_id = generate_alias_id(chat)
-            else:
-                if index_group:
-                    alias_id = generate_alias_id(chat)
-
+            if (
+                chat.is_user
+                and index_private
+                or not chat.is_user
+                and chat.is_channel
+                and index_channel
+                or not chat.is_user
+                and not chat.is_channel
+                and index_group
+            ):
+                alias_id = generate_alias_id(chat)
             if not alias_id:
                 continue
             log.debug(f"Index added for {chat.id} :: {chat.title} at /{alias_id}")
